@@ -15,9 +15,11 @@ namespace ProxyTester
     public partial class MainForm : Form
     {
         private List<ProxyInfo> proxyInfos = new List<ProxyInfo>();
+        private List<string> testUrls = new List<string>();
         public MainForm()
         {
             InitializeComponent();
+            ComboBoxTimeout.SelectedIndex = 1;
         }
 
         private void BtnLoadProxyList_Click(object sender, EventArgs e)
@@ -103,7 +105,11 @@ namespace ProxyTester
 
         private void BtnStart_Click(object sender, EventArgs e)
         {
-            ProcessForm processForm = new ProcessForm(proxyInfos, null, 0, 0);
+            foreach (var listBoxItem in ListBoxUrl.Items)
+            {
+                testUrls.Add(listBoxItem.ToString());
+            }
+            ProcessForm processForm = new ProcessForm(proxyInfos, testUrls, Convert.ToInt32(ComboBoxTimeout.Text), Convert.ToInt32(UpDownThreadCount.Value));
             processForm.Parent = Parent;
             processForm.StartPosition = FormStartPosition.CenterParent;
             processForm.ShowDialog();
