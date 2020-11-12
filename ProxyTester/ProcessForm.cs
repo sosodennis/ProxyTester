@@ -29,6 +29,8 @@ namespace ProxyTester
         private List<ProxyInfo> invalidProxyInfos = new List<ProxyInfo>();
         private static long invalidProxyCount = 0;
 
+        private static int testedProxyCount = 0;
+
         Random random = new Random();
 
 
@@ -41,28 +43,32 @@ namespace ProxyTester
             this.testUrls = new List<string>(testUrls);
             testProxyQueue = new Queue<ProxyInfo>(proxyInfos);
             testProxyQueueCount = testProxyQueue.Count();
+            progressBarTestProxy.Minimum = 0;
+            progressBarTestProxy.Maximum = testProxyQueueCount;
+            progressBarTestProxy.Step = 1;
             StartTestTask();
-        
         }
 
         private void StartTestTask()
         {
-            ServicePointManager.DefaultConnectionLimit = 50;
             Task.Run(() => TestProxy());
         }
 
         private void TestProxy()
         {
+            InitProgressBar();
             while (testProxyQueue.Any())
             {
                 if (Interlocked.Read(ref currentTestingCount) < maxThread)
                 {
                     IncreaseCurrentTestingBy1();
                     ProxyInfo proxy = testProxyQueue.Dequeue();
-                    ;
-                    Task.Run(() => TestConnection(proxy));
+                    ThreadPool.QueueUserWorkItem(x =>
+                    {
+                        TestConnection(proxy);
+                    });
+
                 }
-                Thread.Sleep(500);
             }
             Console.WriteLine("Finish All");
         }
@@ -74,43 +80,19 @@ namespace ProxyTester
 
             int randomNumber = random.Next(0, testUrls.Count);
             string url = testUrls.ElementAt(randomNumber);
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Timeout = connectTimeout;
-            request.ReadWriteTimeout = connectTimeout;
-            request.ContinueTimeout = connectTimeout;
-            request.KeepAlive = false;
-            WebProxy proxy = new WebProxy(proxyInfo.Ip, proxyInfo.Port);
-            proxy.BypassProxyOnLocal = false;
-            request.Proxy = proxy;
-            request.Method = "GET";
-            try
+            ProxyConnectionManager connectionManager = new ProxyConnectionManager();
+            ConnectionResult connectionResult = connectionManager.testConnection(proxyInfo, url, connectTimeout);
+            Console.WriteLine(String.Format("IsSuccess: {0}, Status: {1}", connectionResult.IsSuccess, connectionResult.Status));
+            if (connectionResult.IsSuccess)
             {
-                using (var httpResponse = (HttpWebResponse)request.GetResponse())
-                {
-                    HttpStatusCode statusCode = httpResponse.StatusCode;
-                    if (statusCode == HttpStatusCode.OK)
-                    {
-                        Console.WriteLine("Vaild");
-                        validProxyInfos.Add(proxyInfo);
-                        UpdateValidProxyCount();
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid");
-                        invalidProxyInfos.Add(proxyInfo);
-                        UpdateInvalidProxyCount();
-                    }
-                    httpResponse.Close();
-                }
+                UpdateValidProxyCount();
             }
-            catch (Exception) {
-                invalidProxyInfos.Add(proxyInfo);
+            else
+            {
                 UpdateInvalidProxyCount();
             }
-            finally
-            {
-                DecreaseCurrentTestingBy1();
-            }
+            DecreaseCurrentTestingBy1();
+            IncreaseTestedProxyCountBy1();
         }
 
 
@@ -124,6 +106,11 @@ namespace ProxyTester
         {
             Interlocked.Decrement(ref currentTestingCount);
             UpdateLabelCurrentTesting();
+        }
+
+        private void IncreaseTestedProxyCountBy1() {
+            Interlocked.Increment(ref testedProxyCount);
+            UpdateProgressBar();
         }
 
         private void UpdateLabelCurrentTesting()
@@ -172,6 +159,31 @@ namespace ProxyTester
                 this.Invoke((MethodInvoker)delegate ()
                 {
                     LbInvalidProxy.Text = "" + invalidProxyCount;
+                });
+            }
+            catch (Exception) { }
+        }
+
+        private void InitProgressBar()
+        {
+            //try
+            //{
+            //    this.Invoke((MethodInvoker)delegate ()
+            //    {
+                  
+            //    });
+            //}
+            //catch (Exception e) {
+            //    Console.WriteLine(e.Message);
+            //}
+        }
+
+        private void UpdateProgressBar() {
+            try
+            {
+                this.Invoke((MethodInvoker)delegate ()
+                {
+                    progressBarTestProxy.PerformStep();
                 });
             }
             catch (Exception) { }
